@@ -150,7 +150,6 @@ const WarehouseManagement: React.FC = () => {
   const handleAdd = () => {
     setEditingId(null);
     form.resetFields();
-    form.setFieldValue("priority", 1);
     setIsModalOpen(true);
   };
 
@@ -159,7 +158,6 @@ const WarehouseManagement: React.FC = () => {
     form.setFieldsValue({
       name: record.name,
       address: record.address,
-      priority: record.priority,
       province: record.province,
       district: record.district,
       ward: record.ward,
@@ -243,13 +241,7 @@ const WarehouseManagement: React.FC = () => {
         </div>
       )
     },
-    {
-      title: "Độ ưu tiên",
-      dataIndex: "priority",
-      width: 100,
-      align: 'center' as const,
-      render: (p: number) => <Tag color={p === 1 ? "gold" : "blue"}>{p}</Tag>
-    },
+
     {
       title: "Người tạo",
       dataIndex: ["createBy", "username"],
@@ -368,9 +360,6 @@ const WarehouseManagement: React.FC = () => {
               <Descriptions.Item label="Tỉnh / Thành">
                 {viewDetailItem.province}
               </Descriptions.Item>
-              <Descriptions.Item label="Độ ưu tiên">
-                <Tag color={viewDetailItem.priority === 1 ? "gold" : "cyan"}>Mức {viewDetailItem.priority}</Tag>
-              </Descriptions.Item>
               <Descriptions.Item label="Mô tả">
                 {viewDetailItem.description || <i style={{ color: '#999' }}>Không có mô tả</i>}
               </Descriptions.Item>
@@ -422,15 +411,7 @@ const WarehouseManagement: React.FC = () => {
                 <Input prefix={<HomeOutlined />} placeholder="Ví dụ: Kho tổng HCM" />
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item
-                name="priority"
-                label="Độ ưu tiên"
-                rules={[{ required: true, message: "Nhập độ ưu tiên" }]}
-              >
-                <InputNumber style={{ width: '100%' }} min={1} />
-              </Form.Item>
-            </Col>
+
           </Row>
 
           <Form.Item

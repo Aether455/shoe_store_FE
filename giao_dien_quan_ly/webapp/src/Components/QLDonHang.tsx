@@ -641,6 +641,12 @@ const OrderManagement: React.FC = () => {
               <Descriptions.Item label="Thành tiền" labelStyle={{ fontWeight: 'bold' }} contentStyle={{ fontWeight: 'bold', color: 'red' }}>
                 {formatCurrency(selectedOrder.finalAmount)}
               </Descriptions.Item>
+              <Descriptions.Item label="Ngày tạo">
+                {dayjs(selectedOrder.createAt).format("DD/MM/YYYY HH:mm")}
+              </Descriptions.Item>
+              <Descriptions.Item label="Người tạo">
+                {selectedOrder.createBy ? selectedOrder.createBy.username : ""}
+              </Descriptions.Item>
               <Descriptions.Item label="Ghi chú" span={2}>{selectedOrder.note || "Không"}</Descriptions.Item>
             </Descriptions>
 

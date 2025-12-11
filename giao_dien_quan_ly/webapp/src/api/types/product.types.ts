@@ -99,7 +99,6 @@ export interface VariantCreationOneRequest {
   productId: number;
   sku: string;
   price: number;
-  quantity: number;
   optionValues: number[]; // Set<Long>
   imageFile?: File;
 }

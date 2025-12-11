@@ -181,7 +181,6 @@ const ProductManagement: React.FC = () => {
       key: Date.now(),
       sku: values.sku,
       price: values.price,
-      quantity: values.quantity,
       optionValueIds,
       imageFile: values.imageFile?.[0]?.originFileObj
     };
@@ -275,7 +274,6 @@ const ProductManagement: React.FC = () => {
       variantForm.setFieldsValue({
         sku: variant.sku,
         price: variant.price,
-        quantity: variant.quantity,
         optionSelection: selection
       });
     } else {
@@ -296,7 +294,6 @@ const ProductManagement: React.FC = () => {
         await productService.updateVariant(editingVariantId, {
           sku: values.sku,
           price: values.price,
-          quantity: values.quantity,
           optionValues: optionValueIds,
           imageFile: file
         });
@@ -306,7 +303,6 @@ const ProductManagement: React.FC = () => {
           productId: selectedProduct.id,
           sku: values.sku,
           price: values.price,
-          quantity: values.quantity,
           optionValues: optionValueIds,
           imageFile: file
         });
@@ -339,11 +335,6 @@ const ProductManagement: React.FC = () => {
         <Col span={8}>
           <Form.Item name="price" label="Giá bán" rules={[{ required: true }]}>
             <InputNumber style={{ width: '100%' }} formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} min={0} />
-          </Form.Item>
-        </Col>
-        <Col span={8}>
-          <Form.Item name="quantity" label="Số lượng" rules={[{ required: true }]}>
-            <InputNumber style={{ width: '100%' }} min={0} />
           </Form.Item>
         </Col>
       </Row>
@@ -618,7 +609,6 @@ const ProductManagement: React.FC = () => {
           columns={[
             { title: "SKU", dataIndex: "sku" },
             { title: "Giá", dataIndex: "price", render: p => p.toLocaleString() },
-            { title: "SL", dataIndex: "quantity" },
             {
               title: "Thuộc tính", render: (_, r) => r.optionValueIds.map((id: number) => {
                 const optVal = options.flatMap(o => o.optionValues).find(v => v.id === id);

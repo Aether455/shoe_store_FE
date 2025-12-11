@@ -8,7 +8,6 @@
     name: string;
     address: string;
     description: string;
-    priority: number;
     province: string;
     district: string;
     ward: string;
@@ -28,7 +27,6 @@
   export interface WarehouseRequest {
     name: string;
     address: string;
-    priority: number;
     province: string;
     district: string;
     ward: string;
