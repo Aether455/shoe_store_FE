@@ -1,4 +1,4 @@
-import 'package:app_cua_toi/home/checkout.dart';
+import 'package:app_cua_toi/ui/checkout/checkout.dart';
 import 'package:app_cua_toi/ui/auth/login_page.dart';
 import 'package:app_cua_toi/ui/home/custom_app_bar.dart';
 import 'package:app_cua_toi/ui/main/main_screen.dart';

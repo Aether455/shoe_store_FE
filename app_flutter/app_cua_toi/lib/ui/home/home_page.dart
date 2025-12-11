@@ -6,7 +6,6 @@ import 'package:app_cua_toi/services/product_service.dart';
 import 'package:app_cua_toi/services/home_service.dart';
 import 'package:app_cua_toi/data/models/brand_model.dart';
 import 'package:app_cua_toi/data/models/category_model.dart' as model;
-import '../../home/contact_page.dart';
 import '../product/product_search_delegate.dart';
 
 class HomePage extends StatefulWidget {
