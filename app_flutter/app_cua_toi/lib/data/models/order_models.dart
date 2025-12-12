@@ -355,3 +355,12 @@ class OrderResponseForCustomer {
 
   String get fullAddress => "$shippingAddress, $ward, $district, $province";
 }
+
+// Model phụ để hứng kết quả tạo đơn/confirm/cancel (chứa ID để load lại)
+class OrderResponse {
+  final int id;
+  final String orderCode;
+  OrderResponse({required this.id, required this.orderCode});
+  factory OrderResponse.fromJson(Map<String, dynamic> json) =>
+      OrderResponse(id: json['id'], orderCode: json['orderCode']);
+}

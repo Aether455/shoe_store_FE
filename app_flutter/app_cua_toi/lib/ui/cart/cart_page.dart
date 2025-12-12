@@ -15,77 +15,51 @@ class CartPage extends StatefulWidget {
 }
 
 class _CartPageState extends State<CartPage> {
-  CartResponse? _cart;
-  bool _isLoading = true;
-
   @override
   void initState() {
     super.initState();
-    AuthService.isLoggedInNotifier.addListener(_authListener);
-    _authListener();
-  }
-
-  void _authListener() {
+    // Gọi fetch lần đầu khi vào màn hình (nếu chưa có data)
     if (AuthService.isLoggedIn) {
-      _loadCart();
-    } else {
-      if (mounted) {
-        setState(() {
-          _cart = null;
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    AuthService.isLoggedInNotifier.removeListener(_authListener);
-    super.dispose();
-  }
-
-  void _loadCart() async {
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-    final response = await CartService.getMyCart();
-    if (mounted) {
-      setState(() {
-        if (response.code == 1000) {
-          _cart = response.result;
-        }
-        _isLoading = false;
-      });
+      CartService.fetchCart();
     }
   }
 
   void _updateQuantity(int variantId, int quantity) async {
     if (quantity < 1) return;
+    // Gọi API update -> Service sẽ tự fetch lại -> StreamBuilder tự update UI
     final response = await CartService.updateQuantity(variantId, quantity);
-
-    if (response.code == 1000) {
-      _loadCart();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.message), backgroundColor: Colors.red),
-      );
+    if (response.code != 1000) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response.message),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
   void _deleteItem(int cartItemId) async {
     final response = await CartService.deleteCartItem(cartItemId);
     if (response.code == 1000) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Đã xóa sản phẩm")));
-      _loadCart();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Đã xóa sản phẩm")));
+      }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.message), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response.message),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
-  // --- THÊM MỚI: HÀM XỬ LÝ CLEAR CART ---
   void _clearAllCart() {
     showDialog(
       context: context,
@@ -101,13 +75,11 @@ class _CartPageState extends State<CartPage> {
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(context); // Đóng dialog
-              setState(() => _isLoading = true);
-
-              bool success = (await CartService.clearCart()).code == 1000;
-              if (success) {
-                // Refresh lại giỏ (lúc này sẽ rỗng)
-                _loadCart();
+              Navigator.pop(context);
+              // Loading indicator cục bộ hoặc global nếu muốn,
+              // nhưng StreamBuilder sẽ tự lo việc hiển thị data mới
+              final response = await CartService.clearCart();
+              if (response.code == 1000) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -117,7 +89,6 @@ class _CartPageState extends State<CartPage> {
                   );
                 }
               } else {
-                setState(() => _isLoading = false);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -165,7 +136,7 @@ class _CartPageState extends State<CartPage> {
                             ),
                           )
                           .then((_) {
-                            if (AuthService.isLoggedIn) _loadCart();
+                            if (AuthService.isLoggedIn) CartService.fetchCart();
                           });
                     },
                     style: ElevatedButton.styleFrom(
@@ -182,19 +153,31 @@ class _CartPageState extends State<CartPage> {
           );
         }
 
-        // Nếu đã login mà chưa có data cart (và không đang load), thì gọi load
-        if (_cart == null && !_isLoading) {
-          // Delay nhẹ để tránh lỗi setState trong build
-          Future.microtask(() => _loadCart());
-        }
+        // Dùng StreamBuilder để lắng nghe thay đổi từ CartService
+        return StreamBuilder<CartResponse?>(
+          stream: CartService.cartStream,
+          initialData:
+              CartService.currentCart, // Dữ liệu có sẵn nếu đã load trước đó
+          builder: (context, snapshot) {
+            // Nếu đang không có data và stream đang chờ -> Loading
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                snapshot.data == null) {
+              // Có thể gọi fetch nếu null
+              CartService.fetchCart();
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
 
-        return Scaffold(
-          backgroundColor: Colors.white,
-          body: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : (_cart == null || _cart!.cartItems.isEmpty)
-              ? _buildEmptyCart()
-              : _buildCartBody(),
+            final cart = snapshot.data;
+
+            return Scaffold(
+              backgroundColor: Colors.white,
+              body: (cart == null || cart.cartItems.isEmpty)
+                  ? _buildEmptyCart()
+                  : _buildCartBody(cart), // Truyền cart vào hàm build
+            );
+          },
         );
       },
     );
@@ -229,7 +212,7 @@ class _CartPageState extends State<CartPage> {
     );
   }
 
-  Widget _buildCartBody() {
+  Widget _buildCartBody(CartResponse cart) {
     final bool isDesktop = MediaQuery.of(context).size.width > 900;
 
     return SingleChildScrollView(
@@ -238,23 +221,22 @@ class _CartPageState extends State<CartPage> {
           ? Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(flex: 2, child: _buildItemsList()),
+                Expanded(flex: 2, child: _buildItemsList(cart)),
                 const SizedBox(width: 30),
-                Expanded(flex: 1, child: _buildSummary()),
+                Expanded(flex: 1, child: _buildSummary(cart)),
               ],
             )
           : Column(
               children: [
-                _buildItemsList(),
+                _buildItemsList(cart),
                 const SizedBox(height: 20),
-                _buildSummary(),
+                _buildSummary(cart),
               ],
             ),
     );
   }
 
-  // --- CẬP NHẬT: Thêm Header và Nút Xóa Tất Cả ---
-  Widget _buildItemsList() {
+  Widget _buildItemsList(CartResponse cart) {
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey.shade200),
@@ -264,12 +246,11 @@ class _CartPageState extends State<CartPage> {
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          // Header của List
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                "Giỏ hàng (${_cart!.cartItems.length} sản phẩm)",
+                "Giỏ hàng (${cart.cartItems.length} sản phẩm)",
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
@@ -290,16 +271,13 @@ class _CartPageState extends State<CartPage> {
             ],
           ),
           const Divider(),
-
-          // Danh sách sản phẩm
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: _cart!.cartItems.length,
+            itemCount: cart.cartItems.length,
             separatorBuilder: (c, i) => const Divider(),
             itemBuilder: (context, index) {
-              final item = _cart!.cartItems[index];
-              return _buildCartItem(item);
+              return _buildCartItem(cart.cartItems[index]);
             },
           ),
         ],
@@ -311,7 +289,6 @@ class _CartPageState extends State<CartPage> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Ảnh
         Container(
           width: 80,
           height: 80,
@@ -325,7 +302,6 @@ class _CartPageState extends State<CartPage> {
           ),
         ),
         const SizedBox(width: 15),
-        // Info
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -350,8 +326,6 @@ class _CartPageState extends State<CartPage> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
-              // Mobile controls
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -402,7 +376,7 @@ class _CartPageState extends State<CartPage> {
     );
   }
 
-  Widget _buildSummary() {
+  Widget _buildSummary(CartResponse cart) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -423,7 +397,7 @@ class _CartPageState extends State<CartPage> {
             children: [
               const Text("Tạm tính:"),
               Text(
-                _formatCurrency(_cart!.totalAmount),
+                _formatCurrency(cart.totalAmount),
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
             ],
@@ -437,7 +411,7 @@ class _CartPageState extends State<CartPage> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               Text(
-                _formatCurrency(_cart!.totalAmount),
+                _formatCurrency(cart.totalAmount),
                 style: const TextStyle(
                   fontSize: 18,
                   color: Color(0xFFE30019),
@@ -455,10 +429,8 @@ class _CartPageState extends State<CartPage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => CheckoutPage(
-                      cartList: _cart!.cartItems,
-                      refresh: () {},
-                    ),
+                    builder: (_) =>
+                        CheckoutPage(cartList: cart.cartItems, refresh: () {}),
                   ),
                 );
               },

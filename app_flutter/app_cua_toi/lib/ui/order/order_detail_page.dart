@@ -62,6 +62,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           ),
         );
         _fetchDetail(); // Reload lại để cập nhật trạng thái mới
+        OrderService.fetchMyOrders();
       } else {
         // Thất bại -> Show message từ BE (VD: Không thể hủy đơn đang giao)
         setState(() => _isLoading = false);

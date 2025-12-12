@@ -12,54 +12,13 @@ class OrderListPage extends StatefulWidget {
 }
 
 class _OrderListPageState extends State<OrderListPage> {
-  // Cập nhật kiểu dữ liệu List
-  List<SimpleOrderResponse> _orders = [];
-  bool _isLoading = true;
   final ScrollController _scrollController = ScrollController();
-  int _page = 0;
-  bool _hasMore = true;
 
   @override
   void initState() {
     super.initState();
-    _fetchOrders();
-    _scrollController.addListener(() {
-      if (_scrollController.position.pixels >=
-              _scrollController.position.maxScrollExtent - 200 &&
-          !_isLoading &&
-          _hasMore) {
-        _fetchOrders();
-      }
-    });
-  }
-
-  Future<void> _fetchOrders() async {
-    if (_isLoading && _page > 0) return;
-
-    setState(() => _isLoading = true);
-
-    // Gọi API
-    final response = await OrderService.getMyOrders(page: _page);
-
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-
-        // Kiểm tra thành công
-        if (response.code == 1000 && response.result != null) {
-          final newOrders = response.result!;
-          _orders.addAll(newOrders);
-
-          if (newOrders.length < 10) {
-            _hasMore = false;
-          } else {
-            _page++;
-          }
-        } else {
-          print(response.message);
-        }
-      });
-    }
+    // Gọi API lần đầu để đổ dữ liệu vào Stream
+    OrderService.fetchMyOrders();
   }
 
   @override
@@ -80,20 +39,31 @@ class _OrderListPageState extends State<OrderListPage> {
             ),
           ),
           Expanded(
-            child: _orders.isEmpty && !_isLoading
-                ? const Center(child: Text("Bạn chưa có đơn hàng nào"))
-                : ListView.separated(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _orders.length + (_hasMore ? 1 : 0),
-                    separatorBuilder: (c, i) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      if (index == _orders.length) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      return _buildOrderItem(_orders[index]);
-                    },
-                  ),
+            child: StreamBuilder<List<SimpleOrderResponse>>(
+              stream: OrderService.ordersStream,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    !snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final orders = snapshot.data ?? [];
+
+                if (orders.isEmpty) {
+                  return const Center(child: Text("Bạn chưa có đơn hàng nào"));
+                }
+
+                return ListView.separated(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: orders.length,
+                  separatorBuilder: (c, i) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    return _buildOrderItem(orders[index]);
+                  },
+                );
+              },
+            ),
           ),
         ],
       ),

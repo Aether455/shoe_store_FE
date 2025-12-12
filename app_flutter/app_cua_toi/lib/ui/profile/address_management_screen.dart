@@ -12,34 +12,13 @@ class AddressManagementScreen extends StatefulWidget {
 }
 
 class _AddressManagementScreenState extends State<AddressManagementScreen> {
-  List<Address> _addresses = [];
-  bool _isLoading = true;
-
   @override
   void initState() {
     super.initState();
-    _fetchAddresses();
+    // Gọi fetch để đổ dữ liệu vào stream
+    AddressService.fetchAddresses(widget.customerId);
   }
 
-  // Hàm load lại dữ liệu từ Server -> Cập nhật UI ngay lập tức
-  Future<void> _fetchAddresses() async {
-    setState(() => _isLoading = true);
-    final response = await AddressService.getAddressesByCustomerId(
-      widget.customerId,
-    );
-    if (mounted) {
-      setState(() {
-        if (response.code == 1000) {
-          _addresses = response.result!;
-        } else {
-          // Xử lý lỗi load list
-        }
-        _isLoading = false;
-      });
-    }
-  }
-
-  // Hàm xóa địa chỉ
   void _deleteAddress(int id) async {
     bool confirm =
         await showDialog(
@@ -63,37 +42,29 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
         false;
 
     if (confirm) {
-      final response = await AddressService.deleteAddress(id);
-      if (response.code == 1000) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text("Đã xóa địa chỉ")));
-        }
-        _fetchAddresses(); // Reload ngay lập tức
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(response.message),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+      final response = await AddressService.deleteAddress(
+        id,
+        widget.customerId,
+      );
+      if (response.code != 1000 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response.message),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } else if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Đã xóa địa chỉ")));
       }
     }
   }
 
-  // Hàm hiển thị Dialog thêm mới
   void _showAddDialog() {
     showDialog(
       context: context,
-      builder: (context) => _AddAddressDialog(
-        customerId: widget.customerId,
-        onSuccess: () {
-          _fetchAddresses(); // Reload ngay lập tức sau khi thêm thành công
-        },
-      ),
+      builder: (context) => _AddAddressDialog(customerId: widget.customerId),
     );
   }
 
@@ -113,19 +84,53 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _addresses.isEmpty
-          ? _buildEmptyState()
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: _addresses.length,
-              separatorBuilder: (c, i) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final item = _addresses[index];
-                return _buildAddressCard(item);
-              },
-            ),
+      body: StreamBuilder<List<Address>>(
+        stream: AddressService.addressStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              !snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final addresses = snapshot.data ?? [];
+
+          if (addresses.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.map_outlined, size: 80, color: Colors.grey[300]),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Chưa có địa chỉ nào",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _showAddDialog,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE30019),
+                    ),
+                    child: const Text(
+                      "Thêm địa chỉ mới",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: addresses.length,
+            separatorBuilder: (c, i) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              return _buildAddressCard(addresses[index]);
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -172,41 +177,11 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
       ),
     );
   }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.map_outlined, size: 80, color: Colors.grey[300]),
-          const SizedBox(height: 16),
-          const Text(
-            "Chưa có địa chỉ nào",
-            style: TextStyle(color: Colors.grey),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: _showAddDialog,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE30019),
-            ),
-            child: const Text(
-              "Thêm địa chỉ mới",
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-// Widget Dialog Thêm địa chỉ tách riêng để code gọn
 class _AddAddressDialog extends StatefulWidget {
   final int customerId;
-  final VoidCallback onSuccess;
-
-  const _AddAddressDialog({required this.customerId, required this.onSuccess});
+  const _AddAddressDialog({required this.customerId});
 
   @override
   State<_AddAddressDialog> createState() => _AddAddressDialogState();
@@ -233,8 +208,7 @@ class _AddAddressDialogState extends State<_AddAddressDialog> {
       setState(() => _submitting = false);
 
       if (response.code == 1000 && mounted) {
-        Navigator.pop(context); // Đóng dialog
-        widget.onSuccess(); // Callback để reload list
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Thêm thành công"),
@@ -243,8 +217,8 @@ class _AddAddressDialogState extends State<_AddAddressDialog> {
         );
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Thất bại"),
+          SnackBar(
+            content: Text(response.message),
             backgroundColor: Colors.red,
           ),
         );

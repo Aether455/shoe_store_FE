@@ -73,7 +73,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   void _fetchCustomerInfo() async {
-    final response = await UserService.getCustomerProfile();
+    final response = await UserService.getCustomerProfileData();
     if (mounted && response.result != null) {
       final info = response.result!;
       setState(() {
