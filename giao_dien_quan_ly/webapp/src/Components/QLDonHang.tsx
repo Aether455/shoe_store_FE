@@ -12,7 +12,6 @@ import {
   CloseCircleOutlined,
   SyncOutlined,
   CreditCardOutlined,
-  LoadingOutlined, // Icon loading cho các nút nhỏ
   FilterOutlined
 } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -27,7 +26,6 @@ import { paymentService, PaymentStatus } from "../api/services/payment.service";
 import {
   SimpleOrderResponse, OrderResponse, OrderStatus,
   PaymentMethod, OrderCreationRequest, OrderUpdateRequest,
-  PurchaseOrderItemRequest, // Giả sử dùng chung hoặc định nghĩa riêng
   OrderCriteria
 } from "../api/types/order.types";
 import { SimpleProductResponse, ProductVariantResponse } from "../api/types/product.types";
@@ -196,7 +194,7 @@ const OrderManagement: React.FC = () => {
       message.success("Tạo đơn hàng thành công!");
       setIsCreateModalOpen(false);
       formCreate.resetFields();
-      fetchOrders(1, pagination.pageSize || 10, null);
+      fetchOrders(1, pagination.pageSize || 10, {});
     } catch (error: any) {
       message.error(error.response?.data?.message || "Tạo đơn thất bại");
     } finally {
@@ -231,7 +229,7 @@ const OrderManagement: React.FC = () => {
       await orderService.updateInfo(selectedOrder.id, values);
       message.success("Cập nhật thông tin thành công");
       setIsUpdateInfoModalOpen(false);
-      fetchOrders(pagination.current || 1, pagination.pageSize || 10);
+      fetchOrders(pagination.current || 1, pagination.pageSize || 10, {});
     } catch (e: any) {
       message.error(e.response?.data?.message || "Cập nhật thất bại");
     } finally {
@@ -253,7 +251,7 @@ const OrderManagement: React.FC = () => {
       await orderService.updateStatus(selectedOrder.id, values);
       message.success(`Cập nhật trạng thái thành ${values.orderStatus}`);
       setIsStatusModalOpen(false);
-      fetchOrders(pagination.current || 1, pagination.pageSize || 10);
+      fetchOrders(pagination.current || 1, pagination.pageSize || 10, {});
     } catch (e: any) {
       message.error(e.response?.data?.message || "Lỗi cập nhật trạng thái");
     } finally {
