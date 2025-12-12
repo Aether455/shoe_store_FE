@@ -212,9 +212,9 @@ const OrderManagement: React.FC = () => {
         receiverName: order.receiverName,
         phoneNumber: order.phoneNumber,
         shippingAddress: order.shippingAddress,
-        province: "HCM",
-        district: "Q1",
-        ward: "Ben Nghe",
+        province: order.province,
+        district: order.district,
+        ward: order.ward,
         note: order.note
       });
       setIsUpdateInfoModalOpen(true);

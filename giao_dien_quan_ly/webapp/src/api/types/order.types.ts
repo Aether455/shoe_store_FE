@@ -116,7 +116,7 @@ export interface OrderResponse {
   reducedAmount: number;
   totalAmount: number;
   finalAmount: number;
-    province: string;
+  province: string;
   district: string;
   ward: string;
   voucher?: VoucherResponse;
