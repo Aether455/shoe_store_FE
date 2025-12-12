@@ -5,7 +5,8 @@ import {
   OrderResponse, 
   SimpleOrderResponse, 
   OrderUpdateRequest,
-  OrderUpdateStatusRequest 
+  OrderUpdateStatusRequest, 
+  OrderCriteria
 } from "../types/order.types";
 
 const BASE_URL = "/orders";
@@ -52,12 +53,16 @@ export const orderService = {
     return response.result!;
   },
 
-  // GET /orders/search (Search)
-  search: async (keyword: string, page: number, size: number) => {
+  // GET /orders/search (Search with Criteria)
+  search: async (criteria: OrderCriteria, page: number, size: number) => {
+    // Loại bỏ các key undefined/null/empty để URL sạch sẽ
+    const params = { ...criteria, page, size };
     const response = await axiosClient.get<any, ApiResponse<PageResponse<SimpleOrderResponse>>>(
       `${BASE_URL}/search`,
-      { params: { keyword, page, size } }
+      { params }
     );
     return response.result!;
   },
+
+  
 };

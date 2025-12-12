@@ -116,7 +116,9 @@ export interface OrderResponse {
   reducedAmount: number;
   totalAmount: number;
   finalAmount: number;
-  
+    province: string;
+  district: string;
+  ward: string;
   voucher?: VoucherResponse;
   customer?: SimpleCustomerResponse;
   orderItems: OrderItemResponse[];
@@ -128,4 +130,12 @@ export interface OrderResponse {
   updateAt: string;
   createBy: SimpleUserResponse;
   updateBy: SimpleUserResponse;
+}
+export interface OrderCriteria {
+  keyword?: string;
+  status?: OrderStatus;
+  minFinalAmount?: number;
+  maxFinalAmount?: number;
+  createAtBegin?: string; // LocalDateTime string format
+  createAtEnd?: string;   // LocalDateTime string format
 }

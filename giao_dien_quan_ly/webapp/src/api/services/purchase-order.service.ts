@@ -1,6 +1,7 @@
 import axiosClient from "../axiosClient";
 import { ApiResponse, PageResponse } from "../types/api.response";
 import { 
+  PurchaseOrderReportResponse,
   PurchaseOrderRequest, 
   PurchaseOrderResponse, 
   SimplePurchaseOrderResponse 
@@ -56,4 +57,21 @@ export const purchaseOrderService = {
     );
     return response.result!;
   }
+,
+
+  // --- NEW: Complete Order ---
+  complete: async (id: number) => {
+    const response = await axiosClient.patch<any, ApiResponse<PurchaseOrderResponse>>(`${BASE_URL}/${id}/complete`);
+    return response.result!;
+  },
+
+  // --- NEW: Get Reports ---
+  getReports: async (start: string, end: string, groupBy: 'supplier' | 'month' | 'quarter') => {
+    const response = await axiosClient.get<any, ApiResponse<PurchaseOrderReportResponse[]>>(
+        `${BASE_URL}/reports`,
+        { params: { start, end, groupBy } }
+    );
+    return response.result!;
+  }
+  
 };

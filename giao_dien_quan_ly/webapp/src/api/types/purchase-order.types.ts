@@ -59,3 +59,9 @@ export interface PurchaseOrderRequest {
   purchaseOrderItems: PurchaseOrderItemRequest[];
   totalAmount: number;
 }
+
+export interface PurchaseOrderReportResponse {
+    label: string;
+    totalAmount: number;
+    orderCount: number;
+}

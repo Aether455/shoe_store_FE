@@ -5,10 +5,10 @@ import {
 } from "antd";
 import {
   PlusOutlined, DeleteOutlined, EyeOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, MinusCircleOutlined
+  CheckCircleOutlined, CloseCircleOutlined, MinusCircleOutlined,
+  CarryOutOutlined
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import { jwtDecode } from "jwt-decode";
 
 // Services
 import { purchaseOrderService } from "../api/services/purchase-order.service";
@@ -228,6 +228,14 @@ const PurchaseOrderManagement: React.FC = () => {
     } catch (e: any) { message.error(e.response?.data?.message); }
   };
 
+  const handleComplete = async (id: number) => {
+    try {
+      await purchaseOrderService.complete(id);
+      message.success("Đã nhập kho hoàn tất");
+      fetchOrders(pagination.current, pagination.pageSize);
+      if (viewDetailItem?.id === id) setViewDetailItem(null);
+    } catch (e: any) { message.error(e.response?.data?.message || "Lỗi khi hoàn tất"); }
+  };
   const handleCancel = async (id: number) => {
     try {
       await purchaseOrderService.cancel(id);
@@ -342,6 +350,19 @@ const PurchaseOrderManagement: React.FC = () => {
                   <Button danger icon={<CloseCircleOutlined />}>Hủy đơn</Button>
                 </Popconfirm>
               </>
+            )}
+            {isAdmin && viewDetailItem?.status === PurchaseOrderStatus.APPROVED && (
+              <Popconfirm
+                title="Xác nhận đã nhập kho đầy đủ?"
+                description="Hành động này sẽ cộng số lượng vào kho và hoàn tất đơn hàng."
+                onConfirm={() => handleComplete(viewDetailItem.id)}
+                okText="Nhập kho"
+                cancelText="Hủy"
+              >
+                <Button type="primary" style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }} icon={<CarryOutOutlined />}>
+                  Hoàn tất nhập hàng
+                </Button>
+              </Popconfirm>
             )}
 
             {/* Nút xóa trong Detail Drawer cho Admin */}

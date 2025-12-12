@@ -2,8 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Table, Button, Modal, Form, Input, Select, Space, Tag, message,
   Card, Row, Col, Drawer, Descriptions, Divider, InputNumber,
-  Timeline,
-  Popover
+  Timeline, Popover, Spin, DatePicker
 } from "antd";
 import {
   PlusOutlined, EditOutlined, EyeOutlined, SearchOutlined,
@@ -12,7 +11,9 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   SyncOutlined,
-  CreditCardOutlined
+  CreditCardOutlined,
+  LoadingOutlined, // Icon loading cho các nút nhỏ
+  FilterOutlined
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { TablePaginationConfig } from "antd/es/table";
@@ -20,26 +21,32 @@ import type { TablePaginationConfig } from "antd/es/table";
 // Services
 import { orderService } from "../api/services/order.service";
 import { productService } from "../api/services/product.service";
+import { paymentService, PaymentStatus } from "../api/services/payment.service";
 
 // Types
 import {
   SimpleOrderResponse, OrderResponse, OrderStatus,
   PaymentMethod, OrderCreationRequest, OrderUpdateRequest,
-  OrderItemRequest
+  PurchaseOrderItemRequest, // Giả sử dùng chung hoặc định nghĩa riêng
+  OrderCriteria
 } from "../api/types/order.types";
 import { SimpleProductResponse, ProductVariantResponse } from "../api/types/product.types";
-import { paymentService, PaymentStatus } from "../api/services/payment.service";
 
 const { Option } = Select;
 
 const OrderManagement: React.FC = () => {
   // --- State ---
+  // --- State ---
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [orders, setOrders] = useState<SimpleOrderResponse[]>([]);
   const [pagination, setPagination] = useState<TablePaginationConfig>({
     current: 1, pageSize: 10, total: 0, showSizeChanger: true
   });
-  const [keyword, setKeyword] = useState("");
+
+  // Filter State
+  const [filterCriteria, setFilterCriteria] = useState<OrderCriteria>({});
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false); // Toggle vùng filter nâng cao
 
   // Modals & Drawer State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -47,29 +54,35 @@ const OrderManagement: React.FC = () => {
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
 
-  // Product Selection Modal State
+  // Product Selection
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [productList, setProductList] = useState<SimpleProductResponse[]>([]);
   const [selectedProductVariants, setSelectedProductVariants] = useState<ProductVariantResponse[]>([]);
 
   const [selectedOrder, setSelectedOrder] = useState<OrderResponse | null>(null);
 
+  // Forms
   const [formCreate] = Form.useForm();
   const [formUpdateInfo] = Form.useForm();
   const [formStatus] = Form.useForm();
+  const [formFilter] = Form.useForm(); // Form cho bộ lọc
 
   // --- Fetch Data ---
-  const fetchOrders = async (page: number, size: number, searchKey?: string) => {
+  const fetchOrders = async (page: number, size: number, criteria: OrderCriteria) => {
     setLoading(true);
     try {
-      const key = searchKey !== undefined ? searchKey : keyword;
+      // Logic: Nếu criteria rỗng hoàn toàn -> gọi getAll, ngược lại gọi search
+      // Tuy nhiên, Backend search thường support cả keyword rỗng, nên có thể gọi search luôn cho đồng nhất
+      // Hoặc check:
+      const hasFilter = Object.values(criteria).some(v => v !== undefined && v !== "");
+
       let data;
-      if (key) {
-        data = await orderService.search(key, page - 1, size);
+      if (hasFilter) {
+        data = await orderService.search(criteria, page - 1, size);
       } else {
         data = await orderService.getAll(page - 1, size, "createAt");
-        console.log(data)
       }
+
       setOrders(data.content);
       setPagination(prev => ({
         ...prev, current: page, pageSize: size, total: data.page.totalElements
@@ -82,29 +95,43 @@ const OrderManagement: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchOrders(1, 10);
+    fetchOrders(1, 10, {});
   }, []);
 
   // --- Handlers ---
   const handleTableChange = (newPagination: TablePaginationConfig) => {
-    fetchOrders(newPagination.current || 1, newPagination.pageSize || 10, keyword);
+    fetchOrders(
+      newPagination.current || 1,
+      newPagination.pageSize || 10,
+      filterCriteria
+    );
   };
 
-  const handleSearch = () => {
-    fetchOrders(1, pagination.pageSize || 10, keyword);
+  // Xử lý khi nhấn nút Lọc/Tìm kiếm
+  const handleFilter = (values: any) => {
+    const criteria: OrderCriteria = {
+      keyword: values.keyword,
+      status: values.status,
+      minFinalAmount: values.minAmount,
+      maxFinalAmount: values.maxAmount,
+      createAtBegin: values.dateRange ? values.dateRange[0].startOf('day').format("YYYY-MM-DDTHH:mm:ss") : undefined,
+      createAtEnd: values.dateRange ? values.dateRange[1].endOf('day').format("YYYY-MM-DDTHH:mm:ss") : undefined,
+    };
+    setFilterCriteria(criteria);
+    fetchOrders(1, pagination.pageSize || 10, criteria);
   };
 
-  const handleReset = () => {
-    setKeyword("");
-    fetchOrders(1, pagination.pageSize || 10, "");
+  const handleResetFilter = () => {
+    formFilter.resetFields();
+    setFilterCriteria({});
+    fetchOrders(1, pagination.pageSize || 10, {});
   };
 
-  // --- Product Selection Logic (New) ---
+  // --- Product Selection Logic ---
   const handleOpenProductModal = async () => {
     setIsProductModalOpen(true);
     setProductList([]);
     setSelectedProductVariants([]);
-    // Tải danh sách sản phẩm mặc định
     await handleSearchProduct("");
   };
 
@@ -124,40 +151,19 @@ const OrderManagement: React.FC = () => {
 
   const handleAddVariantToForm = (variant: ProductVariantResponse) => {
     const currentItems: any[] = formCreate.getFieldValue("orderItems") || [];
-
-    // Kiểm tra trùng lặp
     const exists = currentItems.find(item => item.productVariantId === variant.id);
     if (exists) {
       message.warning("Sản phẩm này đã có trong đơn hàng");
       return;
     }
-
-    // Thêm vào form list
     const newItem = {
-      productId: variant.id, // Lưu ý: API create order cần cả productId và variantId
-      // Tuy nhiên, variant response thường ko có productId trực tiếp nếu backend ko trả về
-      // Ta có thể lấy productId từ context cha hoặc giả định backend handle được variantId là đủ
-      // Ở đây mình mock productId tạm thời hoặc lấy từ state nếu cần thiết.
-      // Nhưng trong logic frontend, ta đã có variant ID là unique rồi.
-      // Dựa vào DTO OrderItemRequest: cần productId và productVariantId.
-      // Cách fix: Trong ProductVariantResponse nên có productId, nếu chưa có thì bổ sung ở backend.
-      // Tạm thời: Lấy productId từ selectedProductVariants (nếu có field đó) hoặc
-      // lưu productId khi click chọn sản phẩm ở bước trước.
+      productId: variant.id, // Lưu ý check lại backend cần field này ko, nếu ko thì bỏ hoặc để 0
       productVariantId: variant.id,
-      sku: variant.sku, // Để hiển thị
+      sku: variant.sku,
       pricePerUnit: variant.price,
       quantity: 1,
       total: variant.price
     };
-
-    // Vì trong component Table bên phải ta ko lưu productId của parent, 
-    // ta cần trick: khi click chọn product bên trái, lưu productId vào state tạm.
-    // Tuy nhiên, API create order của bạn yêu cầu `productId`. 
-    // Giải pháp: Backend thực tế chỉ cần `productVariantId` là suy ra được product.
-    // Nếu DTO bắt buộc, ta phải tìm cách lấy.
-    // Giả sử ta tìm trong productList xem variant thuộc product nào (hơi khó vì list chỉ có simple).
-    // Tốt nhất: Backend OrderItemRequest nên bỏ `productId` vì thừa, hoặc Frontend gửi đại 0 nếu Backend tự query lại.
-
     formCreate.setFieldsValue({
       orderItems: [...currentItems, newItem]
     });
@@ -166,10 +172,9 @@ const OrderManagement: React.FC = () => {
 
   // --- Order Creation Logic ---
   const handleCreateOrder = async (values: any) => {
+    setActionLoading(true); // Bắt đầu loading
     try {
-      // Lọc bỏ các item rỗng (nếu có)
       const validItems = values.orderItems.filter((item: any) => item.productVariantId);
-
       if (validItems.length === 0) {
         message.error("Vui lòng chọn ít nhất 1 sản phẩm");
         return;
@@ -179,8 +184,6 @@ const OrderManagement: React.FC = () => {
         ...values,
         payment: { method: values.paymentMethod },
         orderItems: validItems.map((item: any) => ({
-          // Nếu backend bắt buộc productId, ta cần đảm bảo có giá trị.
-          // Ở đây mình dùng variantId thay thế nếu thiếu, hoặc 0.
           productId: item.productId || 0,
           productVariantId: item.productVariantId,
           quantity: item.quantity,
@@ -193,15 +196,17 @@ const OrderManagement: React.FC = () => {
       message.success("Tạo đơn hàng thành công!");
       setIsCreateModalOpen(false);
       formCreate.resetFields();
-      fetchOrders(1, pagination.pageSize || 10);
+      fetchOrders(1, pagination.pageSize || 10, null);
     } catch (error: any) {
       message.error(error.response?.data?.message || "Tạo đơn thất bại");
+    } finally {
+      setActionLoading(false); // Kết thúc loading
     }
   };
 
-  // ... (Giữ nguyên các hàm updateInfo, updateStatus, openDetailDrawer như cũ) ...
   // 2. Update Info
   const openUpdateInfoModal = async (id: number) => {
+    setActionLoading(true); // Loading khi tải chi tiết để sửa
     try {
       const order = await orderService.getById(id);
       setSelectedOrder(order);
@@ -209,17 +214,19 @@ const OrderManagement: React.FC = () => {
         receiverName: order.receiverName,
         phoneNumber: order.phoneNumber,
         shippingAddress: order.shippingAddress,
-        province: "HCM", // Mock
-        district: "Q1",  // Mock
-        ward: "Ben Nghe", // Mock
+        province: "HCM",
+        district: "Q1",
+        ward: "Ben Nghe",
         note: order.note
       });
       setIsUpdateInfoModalOpen(true);
     } catch (e) { message.error("Lỗi tải chi tiết"); }
+    finally { setActionLoading(false); }
   };
 
   const handleUpdateInfo = async (values: OrderUpdateRequest) => {
     if (!selectedOrder) return;
+    setActionLoading(true);
     try {
       await orderService.updateInfo(selectedOrder.id, values);
       message.success("Cập nhật thông tin thành công");
@@ -227,6 +234,8 @@ const OrderManagement: React.FC = () => {
       fetchOrders(pagination.current || 1, pagination.pageSize || 10);
     } catch (e: any) {
       message.error(e.response?.data?.message || "Cập nhật thất bại");
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -239,6 +248,7 @@ const OrderManagement: React.FC = () => {
 
   const handleUpdateStatus = async (values: { orderStatus: OrderStatus }) => {
     if (!selectedOrder) return;
+    setActionLoading(true);
     try {
       await orderService.updateStatus(selectedOrder.id, values);
       message.success(`Cập nhật trạng thái thành ${values.orderStatus}`);
@@ -246,25 +256,36 @@ const OrderManagement: React.FC = () => {
       fetchOrders(pagination.current || 1, pagination.pageSize || 10);
     } catch (e: any) {
       message.error(e.response?.data?.message || "Lỗi cập nhật trạng thái");
+    } finally {
+      setActionLoading(false);
     }
   };
 
   // 4. View Detail
   const openDetailDrawer = async (id: number) => {
+    // Không dùng setActionLoading ở đây vì Drawer có loading riêng hoặc ko cần chặn thao tác khác
     try {
       const detail = await orderService.getById(id);
       setSelectedOrder(detail);
       setIsDetailDrawerOpen(true);
     } catch (e) { message.error("Lỗi tải chi tiết đơn hàng"); }
   };
+
+  // 5. Update Payment Status
   const handleUpdatePaymentStatus = async (paymentId: number, status: PaymentStatus) => {
+    setActionLoading(true); // Chặn thao tác liên tiếp
     try {
       await paymentService.updateStatus(paymentId, status);
       message.success(`Đã cập nhật thanh toán: ${status}`);
-      // Reload detail để cập nhật UI
-      if (selectedOrder) openDetailDrawer(selectedOrder.id);
+      if (selectedOrder) {
+        // Reload lại thông tin chi tiết đơn hàng để cập nhật trạng thái mới nhất
+        const updatedOrder = await orderService.getById(selectedOrder.id);
+        setSelectedOrder(updatedOrder);
+      }
     } catch (error: any) {
       message.error("Cập nhật thanh toán thất bại");
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -272,18 +293,14 @@ const OrderManagement: React.FC = () => {
   // --- Helpers ---
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
 
-
   const getStatusTag = (status: OrderStatus) => {
     const colorMap: Record<string, string> = {
-      PENDING: "gold",
-      CONFIRMED: "cyan",
-      DELIVERING: "blue",
-      DELIVERED: "green",
-      COMPLETED: "purple",
-      CANCELLED: "red"
+      PENDING: "gold", CONFIRMED: "cyan", DELIVERING: "blue",
+      DELIVERED: "green", COMPLETED: "purple", CANCELLED: "red"
     };
     return <Tag color={colorMap[status]}>{status}</Tag>;
   };
+
   const getPaymentStatusTag = (status: string) => {
     switch (status) {
       case PaymentStatus.SUCCESS: return <Tag icon={<CheckCircleOutlined />} color="success">Đã thanh toán</Tag>;
@@ -291,30 +308,28 @@ const OrderManagement: React.FC = () => {
       default: return <Tag icon={<SyncOutlined spin />} color="warning">Chờ thanh toán</Tag>;
     }
   }
+
+  // --- Columns ---
   const columns = [
     { title: "Mã đơn", dataIndex: "orderCode", render: (text: string) => <b>{text}</b> },
     { title: "Người nhận", dataIndex: "receiverName" },
     { title: "SĐT", dataIndex: "phoneNumber" },
-    {
-      title: "Tổng tiền", dataIndex: "finalAmount", align: 'right' as const,
-      render: (val: number) => <b style={{ color: '#cf1322' }}>{formatCurrency(val)}</b>
-    },
+    { title: "Tổng tiền", dataIndex: "finalAmount", align: 'right' as const, render: (val: number) => <b style={{ color: '#cf1322' }}>{formatCurrency(val)}</b> },
     { title: "Trạng thái", dataIndex: "status", render: (s: OrderStatus) => getStatusTag(s) },
     { title: "Ngày tạo", dataIndex: "createAt", render: (d: string) => dayjs(d).format("DD/MM/YYYY HH:mm") },
     {
-      title: "Hành động",
-      key: "action",
+      title: "Hành động", key: "action",
       render: (_: any, record: SimpleOrderResponse) => (
         <Space>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => openDetailDrawer(record.id)} />
-          <Button size="small" icon={<EditOutlined />} onClick={() => openUpdateInfoModal(record.id)} />
-          <Button size="small" type="primary" ghost onClick={() => openStatusModal(record)}>Trạng thái</Button>
+          <Button size="small" icon={<EyeOutlined />} onClick={() => openDetailDrawer(record.id)} disabled={actionLoading} />
+          <Button size="small" icon={<EditOutlined />} onClick={() => openUpdateInfoModal(record.id)} disabled={actionLoading} />
+          <Button size="small" type="primary" ghost onClick={() => openStatusModal(record)} disabled={actionLoading}>Trạng thái</Button>
         </Space>
       )
     }
   ];
 
-  // Watch changes for total calculation in Create Modal
+  // Watch changes for total calculation
   const handleQuantityChange = (index: number, value: number) => {
     const items = formCreate.getFieldValue("orderItems");
     if (items[index]) {
@@ -327,29 +342,63 @@ const OrderManagement: React.FC = () => {
   return (
     <div style={{ padding: 24 }}>
       <Card title="Quản lý Đơn Hàng">
-        <Row gutter={16} style={{ marginBottom: 20 }}>
-          <Col span={8}>
-            <Input
-              placeholder="Tìm theo Mã đơn, SĐT, Tên..."
-              prefix={<SearchOutlined />}
-              value={keyword}
-              onChange={e => setKeyword(e.target.value)}
-              onPressEnter={handleSearch}
-            />
-          </Col>
-          <Col span={8}>
-            <Space>
-              <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>Tìm</Button>
-              <Button icon={<ReloadOutlined />} onClick={handleReset}>Làm mới</Button>
-            </Space>
-          </Col>
-          <Col span={8} style={{ textAlign: 'right' }}>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsCreateModalOpen(true)}>
-              Tạo đơn hàng
-            </Button>
-          </Col>
-        </Row>
+        {/* --- KHU VỰC TÌM KIẾM & LỌC --- */}
+        <Form form={formFilter} onFinish={handleFilter} layout="vertical" style={{ marginBottom: 20 }}>
+          <Row gutter={16}>
+            <Col span={6}>
+              <Form.Item name="keyword" label="Từ khóa">
+                <Input placeholder="Mã đơn, Tên KH, SĐT..." allowClear prefix={<SearchOutlined />} />
+              </Form.Item>
+            </Col>
+            <Col span={4}>
+              <Form.Item name="status" label="Trạng thái">
+                <Select allowClear placeholder="Tất cả">
+                  <Option value={OrderStatus.PENDING}>Pending</Option>
+                  <Option value={OrderStatus.CONFIRMED}>Confirmed</Option>
+                  <Option value={OrderStatus.DELIVERING}>Delivering</Option>
+                  <Option value={OrderStatus.DELIVERED}>Delivered</Option>
+                  <Option value={OrderStatus.COMPLETED}>Completed</Option>
+                  <Option value={OrderStatus.CANCELLED}>Cancelled</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="dateRange" label="Ngày tạo đơn">
+                <DatePicker.RangePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder={['Từ ngày', 'Đến ngày']} />
+              </Form.Item>
+            </Col>
+            <Col span={8} style={{ display: 'flex', alignItems: 'end', paddingBottom: 24 }}>
+              <Space>
+                <Button type="primary" htmlType="submit" icon={<FilterOutlined />}>Lọc</Button>
+                <Button icon={<ReloadOutlined />} onClick={handleResetFilter}>Reset</Button>
+                <Button type="link" onClick={() => setIsFilterExpanded(!isFilterExpanded)}>
+                  {isFilterExpanded ? "Thu gọn" : "Nâng cao"}
+                </Button>
+              </Space>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsCreateModalOpen(true)} style={{ marginLeft: 'auto' }}>
+                Tạo đơn
+              </Button>
+            </Col>
+          </Row>
 
+          {/* Filter mở rộng (Giá tiền) */}
+          {isFilterExpanded && (
+            <Row gutter={16} style={{ marginTop: -10 }}>
+              <Col span={5}>
+                <Form.Item name="minAmount" label="Tiền từ">
+                  <InputNumber style={{ width: '100%' }} formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} min={0} />
+                </Form.Item>
+              </Col>
+              <Col span={5}>
+                <Form.Item name="maxAmount" label="Tiền đến">
+                  <InputNumber style={{ width: '100%' }} formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} min={0} />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
+        </Form>
+
+        {/* --- TABLE --- */}
         <Table
           dataSource={orders}
           columns={columns}
@@ -361,13 +410,132 @@ const OrderManagement: React.FC = () => {
         />
       </Card>
 
+      {/* --- DRAWER: Order Detail --- */}
+      <Drawer
+        title={`Chi tiết đơn hàng: ${selectedOrder?.orderCode || ''}`}
+        width={720}
+        onClose={() => setIsDetailDrawerOpen(false)}
+        open={isDetailDrawerOpen}
+      // Thêm Spin bao ngoài nội dung drawer nếu cần, nhưng thường drawer mở ra rồi mới load data hoặc data có sẵn
+      >
+        {selectedOrder ? (
+          <>
+            <Descriptions title="Thông tin chung" bordered column={2}>
+              <Descriptions.Item label="Người nhận">{selectedOrder.receiverName}</Descriptions.Item>
+              <Descriptions.Item label="SĐT">{selectedOrder.phoneNumber}</Descriptions.Item>
+              <Descriptions.Item label="Địa chỉ" span={2}>
+                {selectedOrder.shippingAddress}, {selectedOrder.ward}, {selectedOrder.district}, {selectedOrder.province}
+              </Descriptions.Item>
+              <Descriptions.Item label="Trạng thái">{getStatusTag(selectedOrder.status)}</Descriptions.Item>
+              <Descriptions.Item label="Kho xử lý">{selectedOrder.warehouse?.name || "Chưa phân bổ"}</Descriptions.Item>
+              <Descriptions.Item label="Tổng tiền hàng">{formatCurrency(selectedOrder.totalAmount)}</Descriptions.Item>
+              <Descriptions.Item label="Giảm giá">{formatCurrency(selectedOrder.reducedAmount)}</Descriptions.Item>
+              <Descriptions.Item label="Thành tiền" labelStyle={{ fontWeight: 'bold' }} contentStyle={{ fontWeight: 'bold', color: 'red' }}>
+                {formatCurrency(selectedOrder.finalAmount)}
+              </Descriptions.Item>
+              <Descriptions.Item label="Ghi chú" span={2}>{selectedOrder.note || "Không"}</Descriptions.Item>
+            </Descriptions>
+
+            <Divider orientation="left"><CreditCardOutlined /> Thông tin thanh toán</Divider>
+            {selectedOrder.payment ? (
+              <Card size="small" style={{ background: '#f9f9f9' }}>
+                <Descriptions column={2}>
+                  <Descriptions.Item label="Phương thức">
+                    <Tag color="blue">{selectedOrder.payment.paymentMethod}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Số tiền">
+                    <b>{formatCurrency(selectedOrder.payment.amount)}</b>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Trạng thái">
+                    <Space>
+                      {getPaymentStatusTag(selectedOrder.payment.status)}
+
+                      {/* Nút Update Status */}
+                      <Popover
+                        content={
+                          <Space direction="vertical">
+                            <Button size="small" type="text" style={{ color: 'green' }}
+                              onClick={() => handleUpdatePaymentStatus(selectedOrder.payment!.id, PaymentStatus.SUCCESS)}
+                              loading={actionLoading}
+                            >
+                              Mark as Success
+                            </Button>
+                            <Button size="small" type="text" style={{ color: 'red' }}
+                              onClick={() => handleUpdatePaymentStatus(selectedOrder.payment!.id, PaymentStatus.FAILED)}
+                              loading={actionLoading}
+                            >
+                              Mark as Failed
+                            </Button>
+                            <Button size="small" type="text" style={{ color: 'orange' }}
+                              onClick={() => handleUpdatePaymentStatus(selectedOrder.payment!.id, PaymentStatus.PENDING)}
+                              loading={actionLoading}
+                            >
+                              Mark as Pending
+                            </Button>
+                          </Space>
+                        }
+                        title="Cập nhật trạng thái"
+                        trigger="click"
+                      >
+                        <Button size="small" icon={<EditOutlined />} disabled={actionLoading} />
+                      </Popover>
+                    </Space>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Ngày tạo">
+                    {dayjs(selectedOrder.payment.createAt).format("DD/MM/YYYY HH:mm")}
+                  </Descriptions.Item>
+                </Descriptions>
+              </Card>
+            ) : (
+              <div style={{ color: '#999', fontStyle: 'italic' }}>Chưa có thông tin thanh toán</div>
+            )}
+
+            <Divider orientation="left"><ShoppingOutlined /> Danh sách sản phẩm</Divider>
+            <Table
+              dataSource={selectedOrder.orderItems}
+              rowKey="id"
+              pagination={false}
+              columns={[
+                {
+                  title: "Sản phẩm",
+                  render: (_, item) => (
+                    <Space>
+                      {item.product.mainImageUrl && <img src={item.product.mainImageUrl} alt="img" style={{ width: 40, height: 40, objectFit: 'cover' }} />}
+                      <div>
+                        <div>{item.product.name}</div>
+                        <Tag>{item.productVariant.sku}</Tag>
+                      </div>
+                    </Space>
+                  )
+                },
+                { title: "Đơn giá", dataIndex: "pricePerUnit", render: formatCurrency, align: 'right' },
+                { title: "SL", dataIndex: "quantity", align: 'center' },
+                { title: "Tổng", dataIndex: "totalPrice", render: formatCurrency, align: 'right' }
+              ]}
+            />
+
+            <Divider orientation="left"><HistoryOutlined /> Lịch sử trạng thái</Divider>
+            <Timeline mode="left">
+              {selectedOrder.orderStatusHistories?.map(h => (
+                <Timeline.Item key={h.id} label={dayjs(h.changeAt).format("DD/MM HH:mm")}>
+                  <b>{h.oldStatus}</b> ➔ <b>{h.newStatus}</b>
+                  <div style={{ fontSize: 12, color: '#888' }}>Bởi: {h.changeBy?.username || "System"}</div>
+                </Timeline.Item>
+              ))}
+            </Timeline>
+          </>
+        ) : (
+          <div style={{ textAlign: 'center', padding: 20 }}><Spin tip="Đang tải chi tiết..." /></div>
+        )}
+      </Drawer>
+
       {/* --- MODAL: Create Order --- */}
       <Modal
         title="Tạo đơn hàng mới (Admin)"
         open={isCreateModalOpen}
         onCancel={() => setIsCreateModalOpen(false)}
         footer={null}
-        width={1000}
+        width={900}
       >
         <Form form={formCreate} layout="vertical" onFinish={handleCreateOrder} initialValues={{ orderItems: [] }}>
           <Row gutter={16}>
@@ -486,7 +654,6 @@ const OrderManagement: React.FC = () => {
             )}
           </Form.List>
 
-          {/* Tổng tiền tạm tính */}
           <div style={{ textAlign: 'right', marginTop: 16, fontSize: 16 }}>
             <Form.Item shouldUpdate>
               {() => {
@@ -498,8 +665,9 @@ const OrderManagement: React.FC = () => {
           </div>
 
           <Form.Item style={{ marginTop: 16, textAlign: 'right' }}>
-            <Button onClick={() => setIsCreateModalOpen(false)} style={{ marginRight: 8 }}>Hủy</Button>
-            <Button type="primary" htmlType="submit">Tạo đơn</Button>
+            <Button onClick={() => setIsCreateModalOpen(false)} style={{ marginRight: 8 }} disabled={actionLoading}>Hủy</Button>
+            {/* Thêm loading cho nút submit */}
+            <Button type="primary" htmlType="submit" loading={actionLoading}>Tạo đơn</Button>
           </Form.Item>
         </Form>
       </Modal>
@@ -566,7 +734,7 @@ const OrderManagement: React.FC = () => {
         </Row>
       </Modal>
 
-      {/* --- MODAL: Update Info (Giữ nguyên) --- */}
+      {/* --- MODAL: Update Info --- */}
       <Modal
         title="Cập nhật thông tin giao hàng"
         open={isUpdateInfoModalOpen}
@@ -574,6 +742,7 @@ const OrderManagement: React.FC = () => {
         footer={null}
       >
         <Form form={formUpdateInfo} layout="vertical" onFinish={handleUpdateInfo}>
+          {/* Các trường nhập liệu... */}
           <Form.Item name="receiverName" label="Tên người nhận" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -592,11 +761,12 @@ const OrderManagement: React.FC = () => {
           <Form.Item name="note" label="Ghi chú">
             <Input.TextArea />
           </Form.Item>
-          <Button type="primary" htmlType="submit" block>Lưu thay đổi</Button>
+          {/* Thêm loading cho nút lưu */}
+          <Button type="primary" htmlType="submit" block loading={actionLoading}>Lưu thay đổi</Button>
         </Form>
       </Modal>
 
-      {/* --- MODAL: Update Status (Giữ nguyên) --- */}
+      {/* --- MODAL: Update Status --- */}
       <Modal
         title="Cập nhật trạng thái đơn hàng"
         open={isStatusModalOpen}
@@ -615,123 +785,10 @@ const OrderManagement: React.FC = () => {
               <Option value={OrderStatus.CANCELLED}>Cancelled</Option>
             </Select>
           </Form.Item>
-          <Button type="primary" htmlType="submit" block>Cập nhật</Button>
+          {/* Thêm loading cho nút lưu */}
+          <Button type="primary" htmlType="submit" block loading={actionLoading}>Cập nhật</Button>
         </Form>
       </Modal>
-
-      {/* --- DRAWER: Order Detail (Giữ nguyên) --- */}
-      <Drawer
-        title={`Chi tiết đơn hàng: ${selectedOrder?.orderCode || ''}`}
-        width={720}
-        onClose={() => setIsDetailDrawerOpen(false)}
-        open={isDetailDrawerOpen}
-      >
-        {selectedOrder && (
-          <>
-            <Descriptions title="Thông tin chung" bordered column={2}>
-              <Descriptions.Item label="Người nhận">{selectedOrder.receiverName}</Descriptions.Item>
-              <Descriptions.Item label="SĐT">{selectedOrder.phoneNumber}</Descriptions.Item>
-              <Descriptions.Item label="Địa chỉ" span={2}>
-                {selectedOrder.shippingAddress}, {selectedOrder.ward}, {selectedOrder.district}, {selectedOrder.province}
-              </Descriptions.Item>
-              <Descriptions.Item label="Trạng thái">{getStatusTag(selectedOrder.status)}</Descriptions.Item>
-              <Descriptions.Item label="Kho xử lý">{selectedOrder.warehouse?.name || "Chưa phân bổ"}</Descriptions.Item>
-              <Descriptions.Item label="Tổng tiền hàng">{formatCurrency(selectedOrder.totalAmount)}</Descriptions.Item>
-              <Descriptions.Item label="Giảm giá">{formatCurrency(selectedOrder.reducedAmount)}</Descriptions.Item>
-              <Descriptions.Item label="Thành tiền" labelStyle={{ fontWeight: 'bold' }} contentStyle={{ fontWeight: 'bold', color: 'red' }}>
-                {formatCurrency(selectedOrder.finalAmount)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Ngày tạo">
-                {dayjs(selectedOrder.createAt).format("DD/MM/YYYY HH:mm")}
-              </Descriptions.Item>
-              <Descriptions.Item label="Người tạo">
-                {selectedOrder.createBy ? selectedOrder.createBy.username : ""}
-              </Descriptions.Item>
-              <Descriptions.Item label="Ghi chú" span={2}>{selectedOrder.note || "Không"}</Descriptions.Item>
-            </Descriptions>
-
-            {/* --- SECTION MỚI: THÔNG TIN THANH TOÁN --- */}
-            <Divider orientation="left"><CreditCardOutlined /> Thông tin thanh toán</Divider>
-            {selectedOrder.payment ? (
-              <Card size="small" style={{ background: '#f9f9f9' }}>
-                <Descriptions column={2}>
-                  <Descriptions.Item label="Phương thức">
-                    <Tag color="blue">{selectedOrder.payment.paymentMethod}</Tag>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Số tiền">
-                    <b>{formatCurrency(selectedOrder.payment.amount)}</b>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Trạng thái">
-                    <Space>
-                      {getPaymentStatusTag(selectedOrder.payment.status)}
-
-                      {/* Nút Update Status bằng Popover */}
-                      <Popover
-                        content={
-                          <Space direction="vertical">
-                            <Button size="small" type="text" style={{ color: 'green' }} onClick={() => handleUpdatePaymentStatus(selectedOrder.payment!.id, PaymentStatus.SUCCESS)}>
-                              Mark as Success
-                            </Button>
-                            <Button size="small" type="text" style={{ color: 'red' }} onClick={() => handleUpdatePaymentStatus(selectedOrder.payment!.id, PaymentStatus.FAILED)}>
-                              Mark as Failed
-                            </Button>
-                            <Button size="small" type="text" style={{ color: 'orange' }} onClick={() => handleUpdatePaymentStatus(selectedOrder.payment!.id, PaymentStatus.PENDING)}>
-                              Mark as Pending
-                            </Button>
-                          </Space>
-                        }
-                        title="Cập nhật trạng thái"
-                        trigger="click"
-                      >
-                        <Button size="small" icon={<EditOutlined />} />
-                      </Popover>
-                    </Space>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Ngày tạo">
-                    {dayjs(selectedOrder.payment.createAt).format("DD/MM/YYYY HH:mm")}
-                  </Descriptions.Item>
-                </Descriptions>
-              </Card>
-            ) : (
-              <div style={{ color: '#999', fontStyle: 'italic' }}>Chưa có thông tin thanh toán</div>
-            )}
-
-            <Divider orientation="left"><ShoppingOutlined /> Danh sách sản phẩm</Divider>
-            <Table
-              dataSource={selectedOrder.orderItems}
-              rowKey="id"
-              pagination={false}
-              columns={[
-                {
-                  title: "Sản phẩm",
-                  render: (_, item) => (
-                    <Space>
-                      {item.product.mainImageUrl && <img src={item.product.mainImageUrl} alt="img" style={{ width: 40, height: 40, objectFit: 'cover' }} />}
-                      <div>
-                        <div>{item.product.name}</div>
-                        <Tag>{item.productVariant.sku}</Tag>
-                      </div>
-                    </Space>
-                  )
-                },
-                { title: "Đơn giá", dataIndex: "pricePerUnit", render: formatCurrency, align: 'right' },
-                { title: "SL", dataIndex: "quantity", align: 'center' },
-                { title: "Tổng", dataIndex: "totalPrice", render: formatCurrency, align: 'right' }
-              ]}
-            />
-
-            <Divider orientation="left"><HistoryOutlined /> Lịch sử trạng thái</Divider>
-            <Timeline mode="left">
-              {selectedOrder.orderStatusHistories?.map(h => (
-                <Timeline.Item key={h.id} label={dayjs(h.changeAt).format("DD/MM HH:mm")}>
-                  <b>{h.oldStatus}</b> ➔ <b>{h.newStatus}</b>
-                  <div style={{ fontSize: 12, color: '#888' }}>Bởi: {h.changeBy?.username || "System"}</div>
-                </Timeline.Item>
-              ))}
-            </Timeline>
-          </>
-        )}
-      </Drawer>
     </div>
   );
 };
