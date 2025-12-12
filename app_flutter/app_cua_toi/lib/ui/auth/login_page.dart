@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../services/auth_service.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({Key? key}) : super(key: key);
+  const LoginPage({super.key});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -66,37 +66,57 @@ class _LoginPageState extends State<LoginPage> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 900) {
-            // DESKTOP LAYOUT (2 Cột)
+            // DESKTOP LAYOUT (Row: Trái Welcome - Phải Form)
             return Row(
               children: [
                 Expanded(child: _buildWelcomePanel(context)),
-                Expanded(child: _buildLoginForm(context, isDesktop: true)),
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      // Cho phép cuộn form desktop nếu màn hình thấp
+                      child: _buildLoginForm(context, isDesktop: true),
+                    ),
+                  ),
+                ),
               ],
             );
           } else {
-            // MOBILE LAYOUT (1 Cột)
+            // MOBILE LAYOUT (Column: Trên Welcome - Dưới Form)
+            // Fix lỗi overflow bằng cách dùng CustomScrollView hoặc SingleChildScrollView toàn trang
             return SingleChildScrollView(
-              child: Container(
-                height: constraints.maxHeight, // Chiếm full chiều cao
-                child: Column(
-                  children: [
-                    // Panel Welcome thu nhỏ lại chút ở mobile (chiếm 35% màn hình)
-                    Expanded(flex: 35, child: _buildWelcomePanel(context)),
-                    // Form chiếm phần còn lại
-                    Expanded(
-                      flex: 65,
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(30),
-                            topRight: Radius.circular(30),
-                          ),
-                        ),
-                        child: _buildLoginForm(context, isDesktop: false),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints
+                      .maxHeight, // Đảm bảo chiếm ít nhất chiều cao màn hình
+                ),
+                child: IntrinsicHeight(
+                  // Giúp Expanded hoạt động trong ScrollView
+                  child: Column(
+                    children: [
+                      // Phần Welcome (chiếm 35% hoặc fix height)
+                      Container(
+                        height: constraints.maxHeight * 0.35,
+                        width: double.infinity,
+                        child: _buildWelcomePanel(context),
                       ),
-                    ),
-                  ],
+
+                      // Phần Form (chiếm phần còn lại)
+                      Expanded(
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.only(
+                              topLeft: Radius.circular(30),
+                              topRight: Radius.circular(30),
+                            ),
+                          ),
+                          // Padding bottom để tránh bị che bởi bàn phím ảo một chút (tùy chọn)
+                          padding: const EdgeInsets.only(bottom: 20),
+                          child: _buildLoginForm(context, isDesktop: false),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -106,7 +126,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // Panel bên trái (hoặc trên cùng ở mobile)
   Widget _buildWelcomePanel(BuildContext context) {
     return Container(
       width: double.infinity,
@@ -126,23 +145,24 @@ class _LoginPageState extends State<LoginPage> {
               const Text(
                 'Welcome Back!',
                 style: TextStyle(
-                  fontSize: 32, // Giảm size chữ chút cho mobile fit hơn
+                  fontSize:
+                      28, // Giảm font size một chút cho an toàn trên mobile nhỏ
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 10),
               const Text(
                 'To keep connected with us please login with your personal info',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 13,
                   color: Colors.white70,
-                  height: 1.5,
+                  height: 1.4,
                 ),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
               OutlinedButton(
                 onPressed: () {
                   Navigator.pushReplacement(
@@ -155,8 +175,8 @@ class _LoginPageState extends State<LoginPage> {
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Colors.white, width: 2),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 40,
-                    vertical: 12,
+                    horizontal: 30,
+                    vertical: 10,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(25),
@@ -167,8 +187,8 @@ class _LoginPageState extends State<LoginPage> {
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    letterSpacing: 1.2,
+                    fontSize: 13,
+                    letterSpacing: 1.1,
                   ),
                 ),
               ),
@@ -179,132 +199,125 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // Form đăng nhập
   Widget _buildLoginForm(BuildContext context, {required bool isDesktop}) {
-    // Padding khác nhau cho desktop và mobile
     final padding = isDesktop
-        ? const EdgeInsets.symmetric(horizontal: 60)
-        : const EdgeInsets.symmetric(horizontal: 30, vertical: 20);
+        ? const EdgeInsets.symmetric(horizontal: 60, vertical: 40)
+        : const EdgeInsets.symmetric(horizontal: 30, vertical: 30);
 
-    return Center(
-      child: SingleChildScrollView(
-        // Cuộn nếu bàn phím che
-        padding: padding,
-        child: Column(
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center, // Căn giữa nội dung
+      children: [
+        const Text(
+          'Sign in',
+          style: TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
-              'Sign in',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Social Icons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildSocialIcon(Icons.facebook, const Color(0xFF3B5998)),
-                const SizedBox(width: 15),
-                _buildSocialIcon(Icons.mail, const Color(0xFFDB4437)),
-                const SizedBox(width: 15),
-                _buildSocialIcon(Icons.tag, const Color(0xFF0077B5)),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            Text(
-              'or use your account',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 25),
-
-            _buildTextField(
-              controller: _usernameController,
-              hintText: 'Username',
-              icon: Icons.person_outline,
-            ),
-            const SizedBox(height: 15),
-
-            _buildTextField(
-              controller: _passwordController,
-              hintText: 'Password',
-              icon: Icons.lock_outline,
-              isPassword: true,
-            ),
-            const SizedBox(height: 10),
-
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () {},
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(0, 0),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: Text(
-                  'Forgot your password?',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
-              ),
-            ),
-            const SizedBox(height: 25),
-
-            SizedBox(
-              width: 200,
-              height: 45,
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFF6B6B), Color(0xFFFF5252)],
-                  ),
-                  borderRadius: BorderRadius.circular(25),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFFF6B6B).withOpacity(0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _handleLogin,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text(
-                          'SIGN IN',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                ),
-              ),
-            ),
+            _buildSocialIcon(Icons.facebook, const Color(0xFF3B5998)),
+            const SizedBox(width: 15),
+            _buildSocialIcon(Icons.mail, const Color(0xFFDB4437)),
+            const SizedBox(width: 15),
+            _buildSocialIcon(Icons.tag, const Color(0xFF0077B5)),
           ],
         ),
-      ),
-    );
+        const SizedBox(height: 20),
+
+        Text(
+          'or use your account',
+          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        ),
+        const SizedBox(height: 25),
+
+        _buildTextField(
+          controller: _usernameController,
+          hintText: 'Username',
+          icon: Icons.person_outline,
+        ),
+        const SizedBox(height: 15),
+
+        _buildTextField(
+          controller: _passwordController,
+          hintText: 'Password',
+          icon: Icons.lock_outline,
+          isPassword: true,
+        ),
+        const SizedBox(height: 10),
+
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: () {},
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(0, 0),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              'Forgot your password?',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ),
+        ),
+        const SizedBox(height: 25),
+
+        SizedBox(
+          width: 200,
+          height: 45,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFF6B6B), Color(0xFFFF5252)],
+              ),
+              borderRadius: BorderRadius.circular(25),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFFF6B6B).withOpacity(0.3),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _handleLogin,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(25),
+                ),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text(
+                      'SIGN IN',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      ],
+    ).paddingAll(
+      isDesktop ? 0 : 20,
+    ); // Extension giả lập hoặc bọc Padding thủ công
   }
 
   Widget _buildSocialIcon(IconData icon, Color color) {
@@ -360,4 +373,10 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
+}
+
+// Extension helper cho tiện
+extension PaddingExtension on Widget {
+  Widget paddingAll(double val) =>
+      Padding(padding: EdgeInsets.all(val), child: this);
 }

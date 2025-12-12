@@ -84,36 +84,49 @@ class _RegisterPageState extends State<RegisterPage> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 900) {
-            // Desktop Layout (Side-by-side)
+            // DESKTOP LAYOUT (2 Cột - Giữ nguyên vì không bị lỗi phím)
             return Row(
               children: [
                 Expanded(child: _buildRegisterForm(context, isDesktop: true)),
-                Expanded(child: _buildHelloPanel(context)),
+                Expanded(child: _buildHelloPanel(context, isDesktop: true)),
               ],
             );
           } else {
-            // Mobile Layout (Stacked)
-            // Đảo ngược thứ tự: Panel Hello ở trên, Form ở dưới
+            // MOBILE LAYOUT (Fix lỗi overflow)
             return SingleChildScrollView(
-              child: Container(
-                height: constraints.maxHeight,
-                child: Column(
-                  children: [
-                    Expanded(flex: 30, child: _buildHelloPanel(context)),
-                    Expanded(
-                      flex: 70,
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(30),
-                            topRight: Radius.circular(30),
-                          ),
-                        ),
-                        child: _buildRegisterForm(context, isDesktop: false),
+              // ClampingScrollPhysics giúp cuộn mượt mà hơn khi nội dung vừa đủ màn hình
+              physics: const ClampingScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Column(
+                    children: [
+                      // Hello Panel: Không dùng Expanded nữa, dùng Container height tùy chỉnh
+                      // Khi bàn phím hiện, phần này sẽ được cuộn lên trên
+                      Container(
+                        width: double.infinity,
+                        // Chiều cao tối thiểu 200 hoặc 25% màn hình để đảm bảo đẹp
+                        height: 250,
+                        child: _buildHelloPanel(context, isDesktop: false),
                       ),
-                    ),
-                  ],
+
+                      // Register Form: Chiếm phần còn lại
+                      Expanded(
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.only(
+                              topLeft: Radius.circular(30),
+                              topRight: Radius.circular(30),
+                            ),
+                          ),
+                          // Thêm padding bottom để tránh sát mép dưới khi cuộn
+                          padding: const EdgeInsets.only(bottom: 20),
+                          child: _buildRegisterForm(context, isDesktop: false),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -123,9 +136,11 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  Widget _buildHelloPanel(BuildContext context) {
+  Widget _buildHelloPanel(BuildContext context, {required bool isDesktop}) {
     return Container(
       width: double.infinity,
+      // Nếu desktop thì full height, mobile thì height do parent quyết định
+      height: isDesktop ? double.infinity : null,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -134,31 +149,34 @@ class _RegisterPageState extends State<RegisterPage> {
         ),
       ),
       child: Center(
-        child: Padding(
+        child: SingleChildScrollView(
+          // Thêm ScrollView cho nội dung bên trong Panel
           padding: const EdgeInsets.all(20.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize:
+                MainAxisSize.min, // Quan trọng: chỉ chiếm không gian cần thiết
             children: [
               const Text(
                 'Hello, Friend!',
                 style: TextStyle(
-                  fontSize: 32,
+                  fontSize: 28, // Giảm font size một chút cho mobile
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 10),
               const Text(
                 'Enter your personal details and start journey with us',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 13,
                   color: Colors.white70,
-                  height: 1.5,
+                  height: 1.4,
                 ),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
               OutlinedButton(
                 onPressed: () {
                   Navigator.pushReplacement(
@@ -169,8 +187,8 @@ class _RegisterPageState extends State<RegisterPage> {
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Colors.white, width: 2),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 40,
-                    vertical: 12,
+                    horizontal: 30,
+                    vertical: 10,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(25),
@@ -181,8 +199,8 @@ class _RegisterPageState extends State<RegisterPage> {
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    letterSpacing: 1.2,
+                    fontSize: 13,
+                    letterSpacing: 1.1,
                   ),
                 ),
               ),
@@ -195,11 +213,13 @@ class _RegisterPageState extends State<RegisterPage> {
 
   Widget _buildRegisterForm(BuildContext context, {required bool isDesktop}) {
     final padding = isDesktop
-        ? const EdgeInsets.symmetric(horizontal: 60)
-        : const EdgeInsets.symmetric(horizontal: 30, vertical: 20);
+        ? const EdgeInsets.symmetric(horizontal: 60, vertical: 40)
+        : const EdgeInsets.symmetric(horizontal: 30, vertical: 30);
 
     return Center(
+      // Căn giữa form
       child: SingleChildScrollView(
+        // Cho phép cuộn form riêng lẻ nếu cần
         padding: padding,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -207,7 +227,7 @@ class _RegisterPageState extends State<RegisterPage> {
             const Text(
               'Create Account',
               style: TextStyle(
-                fontSize: 32,
+                fontSize: 30,
                 fontWeight: FontWeight.bold,
                 color: Colors.black87,
               ),
@@ -320,6 +340,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
+  // (Giữ nguyên _buildSocialIcon và _buildTextField cũ)
   Widget _buildSocialIcon(IconData icon, Color color) {
     return Container(
       width: 40,
