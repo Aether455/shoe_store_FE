@@ -334,7 +334,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
       height: 50,
       child: OutlinedButton.icon(
         onPressed: () async {
-          await AuthService.logout();
+          // HIỂN THỊ HỘP THOẠI XÁC NHẬN
+          bool confirm =
+              await showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text("Đăng xuất"),
+                  content: const Text("Bạn có chắc chắn muốn đăng xuất không?"),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text(
+                        "Hủy",
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                      ),
+                      child: const Text(
+                        "Đăng xuất",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ) ??
+              false;
+
+          // NẾU ĐỒNG Ý -> GỌI LOGOUT
+          if (confirm) {
+            await AuthService.logout();
+          }
         },
         icon: const Icon(Icons.logout, color: Colors.red),
         label: const Text(

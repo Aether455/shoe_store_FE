@@ -1,7 +1,7 @@
 import 'package:app_cua_toi/ui/checkout/checkout.dart';
 import 'package:app_cua_toi/ui/auth/login_page.dart';
 import 'package:app_cua_toi/ui/home/custom_app_bar.dart';
-import 'package:app_cua_toi/ui/main/main_screen.dart';
+import 'package:app_cua_toi/ui/main/main_screen.dart'; // Để dùng mainScreenKey
 import 'package:flutter/material.dart';
 import '../../services/cart_service.dart';
 import '../../services/auth_service.dart';
@@ -18,96 +18,121 @@ class _CartPageState extends State<CartPage> {
   @override
   void initState() {
     super.initState();
-    // Gọi fetch lần đầu khi vào màn hình (nếu chưa có data)
+    // Fetch data lần đầu nếu đã login
     if (AuthService.isLoggedIn) {
       CartService.fetchCart();
     }
   }
 
-  void _updateQuantity(int variantId, int quantity) async {
-    if (quantity < 1) return;
-    // Gọi API update -> Service sẽ tự fetch lại -> StreamBuilder tự update UI
-    final response = await CartService.updateQuantity(variantId, quantity);
+  // --- HÀM DIALOG XÁC NHẬN CHUNG ---
+  Future<bool> _showDeleteConfirmDialog(String title, String content) async {
+    return await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(title),
+            content: Text(content),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("Hủy", style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text("Xóa", style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  void _updateQuantity(
+    int variantId,
+    int currentQuantity,
+    int newQuantity,
+    int cartItemId,
+  ) async {
+    // Trường hợp giảm về 0 -> Hỏi xóa
+    if (newQuantity <= 0) {
+      bool confirm = await _showDeleteConfirmDialog(
+        "Xóa sản phẩm",
+        "Bạn có chắc muốn xóa sản phẩm này khỏi giỏ hàng?",
+      );
+      if (confirm) {
+        _deleteItem(
+          cartItemId,
+          showConfirm: false,
+        ); // Đã confirm rồi nên không hiện lại
+      }
+      return;
+    }
+
+    // Trường hợp tăng/giảm bình thường
+    final response = await CartService.updateQuantity(variantId, newQuantity);
     if (response.code != 1000) {
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(response.message),
             backgroundColor: Colors.red,
           ),
         );
-      }
     }
   }
 
-  void _deleteItem(int cartItemId) async {
+  void _deleteItem(int cartItemId, {bool showConfirm = true}) async {
+    if (showConfirm) {
+      bool confirm = await _showDeleteConfirmDialog(
+        "Xác nhận",
+        "Bạn muốn xóa sản phẩm này?",
+      );
+      if (!confirm) return;
+    }
+
     final response = await CartService.deleteCartItem(cartItemId);
     if (response.code == 1000) {
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text("Đã xóa sản phẩm")));
-      }
     } else {
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(response.message),
             backgroundColor: Colors.red,
           ),
         );
-      }
     }
   }
 
-  void _clearAllCart() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Xác nhận"),
-        content: const Text(
-          "Bạn có chắc chắn muốn xóa tất cả sản phẩm trong giỏ hàng?",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Hủy", style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              // Loading indicator cục bộ hoặc global nếu muốn,
-              // nhưng StreamBuilder sẽ tự lo việc hiển thị data mới
-              final response = await CartService.clearCart();
-              if (response.code == 1000) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Đã xóa toàn bộ giỏ hàng"),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              } else {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Lỗi khi xóa giỏ hàng"),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text(
-              "Xóa tất cả",
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
+  void _clearAllCart() async {
+    bool confirm = await _showDeleteConfirmDialog(
+      "Xóa giỏ hàng",
+      "Bạn có chắc chắn muốn xóa TẤT CẢ sản phẩm trong giỏ hàng?",
     );
+
+    if (confirm) {
+      final response = await CartService.clearCart();
+      if (response.code == 1000) {
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Giỏ hàng đã được làm trống"),
+              backgroundColor: Colors.green,
+            ),
+          );
+      } else {
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response.message),
+              backgroundColor: Colors.red,
+            ),
+          );
+      }
+    }
   }
 
   String _formatCurrency(double price) {
@@ -121,12 +146,18 @@ class _CartPageState extends State<CartPage> {
       builder: (context, isLoggedIn, child) {
         if (!isLoggedIn) {
           return Scaffold(
+            backgroundColor: Colors.white,
             body: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("Vui lòng đăng nhập để xem giỏ hàng"),
-                  const SizedBox(height: 10),
+                  const Icon(Icons.lock_outline, size: 80, color: Colors.grey),
+                  const SizedBox(height: 20),
+                  const Text(
+                    "Vui lòng đăng nhập để xem giỏ hàng",
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 20),
                   ElevatedButton(
                     onPressed: () {
                       Navigator.of(context, rootNavigator: true)
@@ -153,19 +184,19 @@ class _CartPageState extends State<CartPage> {
           );
         }
 
-        // Dùng StreamBuilder để lắng nghe thay đổi từ CartService
+        // StreamBuilder lắng nghe dữ liệu giỏ hàng
         return StreamBuilder<CartResponse?>(
           stream: CartService.cartStream,
-          initialData:
-              CartService.currentCart, // Dữ liệu có sẵn nếu đã load trước đó
+          initialData: CartService.currentCart,
           builder: (context, snapshot) {
-            // Nếu đang không có data và stream đang chờ -> Loading
             if (snapshot.connectionState == ConnectionState.waiting &&
                 snapshot.data == null) {
-              // Có thể gọi fetch nếu null
-              CartService.fetchCart();
+              CartService.fetchCart(); // Gọi fetch nếu chưa có data
               return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
+                backgroundColor: Colors.white,
+                body: Center(
+                  child: CircularProgressIndicator(color: Color(0xFFE30019)),
+                ),
               );
             }
 
@@ -175,7 +206,7 @@ class _CartPageState extends State<CartPage> {
               backgroundColor: Colors.white,
               body: (cart == null || cart.cartItems.isEmpty)
                   ? _buildEmptyCart()
-                  : _buildCartBody(cart), // Truyền cart vào hàm build
+                  : _buildCartBody(cart),
             );
           },
         );
@@ -197,7 +228,7 @@ class _CartPageState extends State<CartPage> {
           const SizedBox(height: 20),
           ElevatedButton(
             onPressed: () {
-              mainScreenKey.currentState?.onItemTapped(0);
+              mainScreenKey.currentState?.onItemTapped(0); // Về trang chủ
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFE30019),
@@ -257,7 +288,7 @@ class _CartPageState extends State<CartPage> {
                 ),
               ),
               TextButton.icon(
-                onPressed: _clearAllCart,
+                onPressed: _clearAllCart, // Gọi hàm xóa tất cả
                 icon: const Icon(
                   Icons.delete_sweep,
                   color: Colors.red,
@@ -289,6 +320,7 @@ class _CartPageState extends State<CartPage> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Ảnh
         Container(
           width: 80,
           height: 80,
@@ -302,6 +334,7 @@ class _CartPageState extends State<CartPage> {
           ),
         ),
         const SizedBox(width: 15),
+        // Info
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -326,29 +359,40 @@ class _CartPageState extends State<CartPage> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+
               const SizedBox(height: 8),
               Row(
                 children: [
+                  // Nút Giảm
                   _quantityButton(
                     Icons.remove,
                     () => _updateQuantity(
                       item.productVariantId,
+                      item.quantity,
                       item.quantity - 1,
+                      item.id,
                     ),
                   ),
+
                   Container(
                     width: 30,
                     alignment: Alignment.center,
                     child: Text("${item.quantity}"),
                   ),
+
+                  // Nút Tăng
                   _quantityButton(
                     Icons.add,
                     () => _updateQuantity(
                       item.productVariantId,
+                      item.quantity,
                       item.quantity + 1,
+                      item.id,
                     ),
                   ),
+
                   const Spacer(),
+                  // Nút Xóa item
                   IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
                     onPressed: () => _deleteItem(item.id),

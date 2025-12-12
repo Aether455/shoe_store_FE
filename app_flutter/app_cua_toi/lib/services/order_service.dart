@@ -147,6 +147,23 @@ class OrderService {
     }
   }
 
+  static Future<ApiResponse<OrderResponse>> completeOrder(int id) async {
+    try {
+      final response = await _dio.patch('/user/orders/$id/complete');
+      final apiResponse = ApiResponse<OrderResponse>.fromJson(
+        response.data,
+        (json) => OrderResponse.fromJson(json),
+      );
+
+      if (apiResponse.code == 1000) {
+        fetchMyOrders(); // Refresh list để cập nhật trạng thái mới
+      }
+      return apiResponse;
+    } catch (e) {
+      return _handleError(e);
+    }
+  }
+
   static ApiResponse<T> _handleError<T>(dynamic e) {
     String msg = "Lỗi kết nối hoặc lỗi không xác định";
     int code = 9999;
