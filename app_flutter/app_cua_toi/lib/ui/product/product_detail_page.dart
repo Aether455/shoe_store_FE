@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import '../../services/product_service.dart';
 import '../../services/cart_service.dart';
 import '../../services/auth_service.dart';
-
 import '../auth/login_page.dart';
 
 class ProductDetailPage extends StatefulWidget {
@@ -16,56 +15,35 @@ class ProductDetailPage extends StatefulWidget {
 }
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
-  ProductDetail? _product;
-  bool _isLoading = true;
   int _quantity = 1;
-
-  // State quản lý việc chọn Variant
-  // Map lưu: Key là tên thuộc tính (VD: Color), Value là giá trị đang chọn (VD: Red)
-  // Tuy nhiên API hiện tại trả về List<ProductVariant>, mỗi variant có List<OptionValue>.
-  // Để đơn giản hóa cho UI demo, ta sẽ hiển thị danh sách các Variant để user click chọn trực tiếp.
   int? _selectedVariantId;
   double _currentPrice = 0;
 
   @override
   void initState() {
     super.initState();
-    _fetchDetail();
+    // Gọi API để đẩy dữ liệu vào Stream
+    ProductService.fetchProductDetail(widget.productId);
   }
 
-  void _fetchDetail() async {
-    final response = await ProductService.getProductDetail(widget.productId);
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-        if (response.code == 1000) {
-          _product = response.result;
-        } else {
-          // Hiển thị lỗi nếu không tải được (VD: Sản phẩm bị xóa)
-          _product = null;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(response.message),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      });
-    }
+  @override
+  void dispose() {
+    ProductService.clearDetail();
+    super.dispose();
   }
 
   String _formatCurrency(double price) {
     return "${price.toInt().toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')}đ";
   }
 
-  // Xử lý thêm vào giỏ
   void _addToCart() async {
     if (!AuthService.isLoggedIn) {
       _showMsg("Vui lòng đăng nhập để mua hàng", isError: true);
-      Navigator.push(
+      // Sử dụng rootNavigator để đè lên toàn bộ màn hình
+      Navigator.of(
         context,
-        MaterialPageRoute(builder: (_) => const LoginPage()),
-      );
+        rootNavigator: true,
+      ).push(MaterialPageRoute(builder: (_) => const LoginPage()));
       return;
     }
 
@@ -74,7 +52,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       return;
     }
 
-    // Call API
     final response = await CartService.addToCart(
       widget.productId,
       _selectedVariantId!,
@@ -89,6 +66,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 
   void _showMsg(String msg, {bool isError = false}) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
@@ -102,41 +80,73 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   Widget build(BuildContext context) {
     final bool isDesktop = MediaQuery.of(context).size.width > 800;
 
-    if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    if (_product == null) {
-      return const Scaffold(
-        body: Center(child: Text("Không tìm thấy sản phẩm")),
-      );
-    }
-
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: const CustomAppBar(showBackButton: true),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: isDesktop
-            ? Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      body: StreamBuilder<ProductDetail?>(
+        stream: ProductService.productDetailStream,
+        builder: (context, snapshot) {
+          // 1. Trạng thái Loading
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFFE30019)),
+            );
+          }
+
+          // 2. Trạng thái Lỗi
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Expanded(child: _buildImage()),
-                  const SizedBox(width: 40),
-                  Expanded(child: _buildInfo()),
-                ],
-              )
-            : Column(
-                children: [
-                  _buildImage(),
-                  const SizedBox(height: 20),
-                  _buildInfo(),
+                  const Icon(Icons.error_outline, size: 60, color: Colors.red),
+                  const SizedBox(height: 10),
+                  Text("Lỗi: ${snapshot.error}"),
+                  const SizedBox(height: 10),
+                  ElevatedButton(
+                    onPressed: () =>
+                        ProductService.fetchProductDetail(widget.productId),
+                    child: const Text("Thử lại"),
+                  ),
                 ],
               ),
+            );
+          }
+
+          // 3. Trạng thái Không có dữ liệu
+          if (!snapshot.hasData || snapshot.data == null) {
+            return const Center(child: Text("Không tìm thấy sản phẩm"));
+          }
+
+          // 4. Có dữ liệu -> Render UI
+          final product = snapshot.data!;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: isDesktop
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _buildImage(product)),
+                      const SizedBox(width: 40),
+                      Expanded(child: _buildInfo(product)),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      _buildImage(product),
+                      const SizedBox(height: 20),
+                      _buildInfo(product),
+                    ],
+                  ),
+          );
+        },
       ),
       bottomNavigationBar: isDesktop ? null : _buildBottomBar(),
     );
   }
 
-  Widget _buildImage() {
+  Widget _buildImage(ProductDetail product) {
     return Container(
       height: 400,
       width: double.infinity,
@@ -145,7 +155,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Image.network(
-        _product!.mainImageUrl,
+        product.mainImageUrl,
         fit: BoxFit.contain,
         errorBuilder: (c, e, s) =>
             const Icon(Icons.image_not_supported, size: 80, color: Colors.grey),
@@ -153,13 +163,13 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
   }
 
-  Widget _buildInfo() {
-    // Tính giá hiển thị
+  Widget _buildInfo(ProductDetail product) {
+    // Logic hiển thị giá
     String displayPrice = "Liên hệ";
     if (_selectedVariantId != null) {
       displayPrice = _formatCurrency(_currentPrice);
-    } else if (_product!.variants.isNotEmpty) {
-      final prices = _product!.variants.map((v) => v.price).toList()..sort();
+    } else if (product.variants.isNotEmpty) {
+      final prices = product.variants.map((v) => v.price).toList()..sort();
       displayPrice =
           "${_formatCurrency(prices.first)} - ${_formatCurrency(prices.last)}";
     }
@@ -168,7 +178,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _product!.name,
+          product.name,
           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
@@ -190,9 +200,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         Wrap(
           spacing: 10,
           runSpacing: 10,
-          children: _product!.variants.map((variant) {
+          children: product.variants.map((variant) {
             bool isSelected = _selectedVariantId == variant.id;
+            // Ghép tên các thuộc tính (VD: Màu Đỏ / Size XL)
             String label = variant.optionValues.map((o) => o.value).join(" / ");
+
             return GestureDetector(
               onTap: () {
                 setState(() {
@@ -243,6 +255,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
                 "$_quantity",
@@ -260,11 +273,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         const Text("Mô tả:", style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 5),
         Text(
-          _product!.description,
+          product.description,
           style: TextStyle(color: Colors.grey[700], height: 1.5),
         ),
 
-        // Nút mua hàng cho Desktop
+        // Nút mua hàng cho Desktop (nằm bên phải)
         if (MediaQuery.of(context).size.width > 800) ...[
           const SizedBox(height: 40),
           SizedBox(
