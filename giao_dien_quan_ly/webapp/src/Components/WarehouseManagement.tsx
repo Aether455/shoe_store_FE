@@ -270,7 +270,7 @@ const WarehouseManagement: React.FC = () => {
               onClick={() => handleEdit(record)}
             />
           </Tooltip>
-          {isAdmin ?? (<Popconfirm
+          {isAdmin && (<Popconfirm
             title="Xóa kho này?"
             onConfirm={() => handleDelete(record.id)}
             okButtonProps={{ danger: true }}
