@@ -1,9 +1,10 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { tokenUtils } from '../utils/tokenUtils';
 
+const apiUrl = import.meta.env.VITE_API_URL;
 // Cấu hình base URL
 const axiosClient = axios.create({
-  baseURL: 'https://api.aether.id.vn/api',
+  baseURL: apiUrl,
   headers: {
     'Content-Type': 'application/json',
   },
