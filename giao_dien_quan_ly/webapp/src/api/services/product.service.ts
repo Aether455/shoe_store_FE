@@ -17,7 +17,7 @@ export const productService = {
         const res = await axiosClient.get<any, ApiResponse<PageResponse<SimpleProductResponse>>>(
             `${BASE_URL}?page=${page}&size=${size}`
         );
-        return res.result!; 
+        return res.result!;
     },
 
     // GET /products/search (Admin View)
@@ -58,7 +58,6 @@ export const productService = {
         data.variants.forEach((variant, index) => {
             formData.append(`variants[${index}].sku`, variant.sku);
             formData.append(`variants[${index}].price`, variant.price.toString());
-            formData.append(`variants[${index}].quantity`, variant.quantity.toString());
 
             // Option Values là Set/List ID
             variant.optionValueIds.forEach((ovId) => {
@@ -73,6 +72,7 @@ export const productService = {
         const response = await axiosClient.post<any, ApiResponse<ProductResponse>>(BASE_URL, formData, {
             headers: { "Content-Type": "multipart/form-data" },
         });
+        console.log(response);
         return response.result!;
     },
 
